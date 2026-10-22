@@ -1,0 +1,29 @@
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Local database (Postgres data directory) ---
+pgdata/
+
+# --- Generated / derived artifacts ---
+content_tree.json
+output_test/
+extracted/
+
+# --- Local input data (large files) ---
+pdfs/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
