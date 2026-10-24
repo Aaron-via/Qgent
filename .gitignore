@@ -16,8 +16,13 @@ pgdata/
 
 # --- Generated / derived artifacts ---
 content_tree.json
+parsed/
 output_test/
 extracted/
+
+# --- MinerU runtime state (created in the working directory) ---
+blobs/
+.mineru-service.lock
 
 # --- Local input data (large files) ---
 pdfs/

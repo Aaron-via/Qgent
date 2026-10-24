@@ -1,0 +1,51 @@
+# Qgent 运行依赖
+#
+# 版本按开发环境 .venv 的实际安装 pin（Python 3.12.10 / Windows）。
+# 只列项目代码直接 import 的包；传递依赖交给 pip 解析。
+# 需要完全可复现的环境快照时，用 `pip freeze` 生成 lock 文件。
+#
+# 安装：
+#   python -m venv .venv
+#   .venv/Scripts/python.exe -m pip install -r requirements.txt
+#
+# 另需：Docker（跑 PostgreSQL 16 + pgvector，见 docker-compose.yml）。
+
+# --- 数据库 ---------------------------------------------------------------
+# 唯一的数据访问层。项目用裸 SQL 而非 ORM，因为要做两件 ORM 不擅长的事：
+# 往模型写的 SQL 里按括号深度注入 paper_id，以及 execute_values 批量插入。
+# 注意：pgvector 扩展由 docker 镜像提供，不是 Python 包。
+psycopg2-binary==2.9.13
+
+# --- 模型服务 -------------------------------------------------------------
+# embedding（qwen3.7-text-embedding-flash）。写侧的 chat 调用也走 dashscope SDK
+# 的 OpenAI 兼容入口（dashscope.aigc.chat_completion.Completions.create）。
+dashscope==2.0.1
+
+# 读侧 chat 客户端。用裸 requests 而不是 SDK，是因为 tools / tool_calls 是请求体
+# 的一部分，SDK 的 chat wrapper 不暴露这两个字段。
+requests==2.34.2
+
+# --- 模型输出解析 ---------------------------------------------------------
+# 写侧 JSON 解析的第三级兜底。LaTeX 的单反斜杠（"\alpha"）不是合法 JSON 转义，
+# 是模型输出破坏 JSON 的头号原因。
+json-repair==0.64.1
+
+# --- Web 层 ---------------------------------------------------------------
+fastapi==0.159.1
+uvicorn==0.54.0
+# ChatRequest 请求模型。
+pydantic==2.14.1
+# FastAPI 的 File(...) / UploadFile 依赖它。缺失不会在 import 时报错，而是在
+# /api/upload 真正被调用时才失败，排查成本高，所以显式列出。
+python-multipart==0.0.32
+
+# --- PDF 解析 -------------------------------------------------------------
+# 提供 mineru-kit 可执行文件（mineru 包的 console script），parse_pdf.py 依赖它。
+#
+# 基础安装即可：默认走 llama-cpp 后端，本项目在 standard tier 下解析用不到 torch。
+# 不要改成 mineru[all] —— 那等于 mineru[full] = mineru[torch] + vllm/lmdeploy，
+# 会多拉数 GB 的本地推理栈。当前环境没有装它们，解析正常工作。
+#
+# 安装后确认可执行文件在（parse_pdf.py 会依次找 PATH 和 .venv/Scripts/）：
+#   ls .venv/Scripts/ | grep mineru-kit
+mineru==4.0.12

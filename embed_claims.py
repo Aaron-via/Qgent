@@ -2,9 +2,10 @@
 """Embed pending claims with Qwen and write the vectors back to PostgreSQL.
 
 Agent tool contract:
-    * Reads credentials from DASHSCOPE_API_KEY (never hard-coded).  A .env file
-      beside this script is loaded into the environment at startup; exported
-      environment variables take precedence over it.
+    * Reads credentials from EMBEDDING_API_KEY, falling back to
+      DASHSCOPE_API_KEY (never hard-coded).  A .env file beside this script is
+      loaded into the environment at startup; exported environment variables
+      take precedence over it.
     * Selects only rows with `embedding IS NULL`, so the tool is idempotent and
       safe to re-run after a partial failure.
     * Calls the DashScope TextEmbedding API in batches of at most 10 texts.
@@ -249,7 +250,10 @@ def main(argv: list[str] | None = None) -> int:
               "install with: pip install psycopg2-binary dashscope numpy", file=sys.stderr)
         return 2
 
-    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    api_key = (
+        os.getenv("EMBEDDING_API_KEY", "").strip()
+        or os.getenv("DASHSCOPE_API_KEY", "").strip()
+    )
     if not api_key:
         print(
             "error: DASHSCOPE_API_KEY is not set.\n"

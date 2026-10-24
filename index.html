@@ -1,0 +1,2416 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qgent — 论文精读工作台</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- PDF.js 3.x is the last UMD build: pdfjsLib is a plain global.
+         bootcdn mirrors cdnjs' exact layout and is reachable from networks
+         where cdnjs is not, so it is the fallback for both libraries. -->
+    <script>
+      window.QG_PDF_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (!window.pdfjsLib) {
+        window.QG_PDF_BASE = 'https://cdn.bootcdn.net/ajax/libs/pdf.js/3.11.174/';
+        document.write('<script src="' + window.QG_PDF_BASE + 'pdf.min.js"><\/script>');
+      }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <script>
+      if (!window.marked) {
+        document.write(
+          '<script src="https://cdn.bootcdn.net/ajax/libs/marked/4.3.0/marked.min.js"><\/script>'
+        );
+      }
+    </script>
+
+    <!-- Optional: renders the LaTeX the model emits. Without it the formulas
+         stay visible as raw text instead of breaking the answer. -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+      crossorigin="anonymous"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+      if (!window.renderMathInElement) {
+        document.write(
+          '<script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"><\/script>'
+        );
+      }
+    </script>
+
+    <style>
+      /* ---------------------------------------------------------------------
+       * Design tokens — the Elicit palette, inherited from the elicit-rea
+       * frontend (src/index.css): dark teal brand, warm grey neutrals.
+       * ------------------------------------------------------------------- */
+      :root {
+        --brand: #0f6b6b;
+        --brand-hover: #0b5757;
+        --brand-soft: #e3f1f0;
+        --brand-tint: #d7ebe9;
+        --brand-line: #a9d5d2;
+
+        --ink: #1a1a1a;
+        --ink-2: #3d3d3d;
+        --ink-soft: #6b7280;
+        --ink-faint: #9b9b9b;
+
+        --line: #e6e5e3;
+        --line-soft: #efeeec;
+        --surface: #ffffff;
+        --canvas: #fbfbfa;
+        --sunken: #f4f3f1;
+        --chip: #f0efed;
+
+        --danger: #b4432f;
+        --radius-panel: 10px;
+        --sidebar-w: 280px;
+        --header-h: 60px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--ink);
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+          'PingFang SC', 'Microsoft YaHei', sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: #c9c8c6;
+        border: 3px solid transparent;
+        border-radius: 8px;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: #aeadab;
+      }
+
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .app {
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* =====================================================================
+       * Sidebar
+       * =================================================================== */
+      .sidebar {
+        flex: 0 0 var(--sidebar-w);
+        width: var(--sidebar-w);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--canvas);
+        border-right: 1px solid var(--line);
+      }
+
+      .side-head {
+        height: var(--header-h);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        flex: 0 0 auto;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo-name {
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        color: var(--brand);
+      }
+
+      .side-upload {
+        flex: 0 1 auto;
+        max-height: 42vh;
+        overflow-y: auto;
+        padding: 0 12px;
+      }
+
+      /* -- library list -- */
+      .lib-label {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px 6px;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        color: var(--ink-faint);
+      }
+      .paper-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0 12px 8px;
+      }
+
+      /* -- upload dropzone -- */
+      .drop {
+        border: 1.5px dashed var(--brand-line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 18px 12px;
+        text-align: center;
+        color: var(--ink-soft);
+        transition: background 0.15s, border-color 0.15s;
+        cursor: pointer;
+      }
+      .drop:hover {
+        background: var(--brand-soft);
+      }
+      .drop.over {
+        background: var(--brand-soft);
+        border-color: var(--brand);
+        color: var(--brand);
+      }
+      .drop-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink-2);
+      }
+      .drop.over .drop-title {
+        color: var(--brand);
+      }
+      .drop-sub {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--ink-faint);
+      }
+      .drop svg {
+        display: block;
+        margin: 0 auto 8px;
+        color: var(--brand);
+      }
+
+      /* -- task card -- */
+      .task {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-panel);
+        background: var(--surface);
+        padding: 11px 12px;
+      }
+      .task-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .task-name {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-x {
+        flex: 0 0 auto;
+        border: none;
+        background: none;
+        padding: 2px 4px;
+        color: var(--ink-faint);
+        border-radius: 6px;
+        line-height: 1;
+      }
+      .task-x:hover {
+        background: var(--sunken);
+        color: var(--ink);
+      }
+      .task-msg {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--ink-soft);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-msg.failed {
+        color: var(--danger);
+        white-space: normal;
+      }
+      .steps {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 9px;
+      }
+      .step {
+        flex: 1 1 0;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11.5px;
+        color: var(--ink-faint);
+      }
+      .step-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #dcdbd9;
+        flex: 0 0 auto;
+      }
+      .step.active {
+        color: var(--brand);
+        font-weight: 500;
+      }
+      .step.active .step-dot {
+        background: var(--brand);
+        animation: pulse-dot 1.1s ease-in-out infinite;
+      }
+      .step.done {
+        color: var(--ink-soft);
+      }
+      .step.done .step-dot {
+        background: var(--brand);
+      }
+      .step.failed {
+        color: var(--danger);
+      }
+      .step.failed .step-dot {
+        background: var(--danger);
+      }
+      @keyframes pulse-dot {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .bar {
+        height: 3px;
+        border-radius: 2px;
+        background: var(--line-soft);
+        margin-top: 9px;
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: 2px;
+        background: var(--brand);
+        animation: slide 1.3s ease-in-out infinite;
+      }
+      .bar.done > i {
+        width: 100%;
+        animation: none;
+      }
+      .bar.failed > i {
+        width: 100%;
+        background: var(--danger);
+        animation: none;
+      }
+      @keyframes slide {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(250%);
+        }
+      }
+
+      /* -- library list -- */
+      .lib-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 8px 8px;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        color: var(--ink-faint);
+      }
+      .paper {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: none;
+        border-radius: 8px;
+        padding: 9px 10px;
+        margin-bottom: 2px;
+        transition: background 0.15s;
+        position: relative;
+      }
+      .paper:hover {
+        background: var(--sunken);
+      }
+      .paper.active {
+        background: var(--sunken);
+      }
+      .paper.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 9px;
+        bottom: 9px;
+        width: 2.5px;
+        border-radius: 2px;
+        background: var(--brand);
+      }
+      .paper-title {
+        font-size: 14px;
+        line-height: 1.35;
+        color: var(--ink-2);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .paper.active .paper-title {
+        color: var(--ink);
+        font-weight: 500;
+      }
+      .paper-meta {
+        margin-top: 5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .domain {
+        font-size: 11px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        color: var(--brand);
+        white-space: nowrap;
+      }
+      .empty-hint {
+        padding: 10px;
+        font-size: 13px;
+        color: var(--ink-faint);
+      }
+
+      .side-foot {
+        flex: 0 0 auto;
+        padding: 10px 16px;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--ink-faint);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dot-live {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--brand);
+      }
+      .dot-live.off {
+        background: var(--danger);
+      }
+
+      /* =====================================================================
+       * Workspace: reader | splitter | chat
+       * =================================================================== */
+      .workspace {
+        flex: 1 1 auto;
+        display: flex;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .pane {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .pane-head {
+        flex: 0 0 auto;
+        height: var(--header-h);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .pane-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pane-note {
+        flex: 0 0 auto;
+        font-size: 11.5px;
+        color: var(--ink-faint);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 9px;
+        white-space: nowrap;
+      }
+
+      /* -- single-paper <-> whole-library switch -- */
+      .mode-switch {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--sunken);
+      }
+      .mode-btn {
+        border: none;
+        background: none;
+        border-radius: 999px;
+        padding: 3px 11px;
+        font-size: 12.5px;
+        color: var(--ink-soft);
+        white-space: nowrap;
+        transition: background 0.15s, color 0.15s;
+      }
+      .mode-btn:hover {
+        color: var(--ink);
+      }
+      .mode-btn.active {
+        background: var(--surface);
+        color: var(--brand);
+        font-weight: 500;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+      }
+
+      /* -- the papers a multi-mode answer cited -- */
+      .paper-select {
+        max-width: 320px;
+        border: 1px solid var(--brand-line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font: inherit;
+        font-size: 12.5px;
+        padding: 3px 10px;
+        cursor: pointer;
+      }
+      .paper-select:focus {
+        outline: none;
+        border-color: var(--brand);
+      }
+
+      .reader {
+        flex: 1 1 50%;
+        background: var(--sunken);
+      }
+      .chat {
+        flex: 1 1 50%;
+        background: var(--surface);
+      }
+
+      .splitter {
+        flex: 0 0 6px;
+        cursor: col-resize;
+        background: var(--line);
+        position: relative;
+      }
+      .splitter::after {
+        content: '';
+        position: absolute;
+        inset: 0 -3px;
+      }
+      .splitter:hover,
+      .splitter.dragging {
+        background: var(--brand-line);
+      }
+
+      /* -- reader -- */
+      .pdf-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 20px 20px 40px;
+        /* Deliberately not smooth: a jump to page 40 would otherwise scroll
+           through every page in between, queueing a render for each one. */
+      }
+      .pdf-pages {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+      }
+      .pdf-page {
+        position: relative;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        line-height: 0;
+        max-width: 100%;
+        /* The height is set inline from the page's own viewport, so a
+           placeholder reserves exactly the space its canvas will fill and the
+           scrollbar never jumps when a page finishes rendering. */
+        overflow: hidden;
+      }
+      /* Not rendered yet: the page number stands in for the page. */
+      .pdf-page:not(.ready)::after {
+        content: attr(data-page);
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        line-height: 1;
+        color: #dcdbd9;
+      }
+      .pdf-page:not(.ready) .pdf-num {
+        display: none;
+      }
+      .pdf-page canvas {
+        display: block;
+        border-radius: 5px;
+        max-width: 100%;
+      }
+      .pdf-num {
+        position: absolute;
+        right: 8px;
+        bottom: 6px;
+        font-size: 11px;
+        line-height: 1;
+        color: var(--ink-faint);
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 999px;
+        padding: 3px 8px;
+      }
+
+      .page-input {
+        width: 42px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        padding: 1px 4px;
+        font: inherit;
+        font-size: 11.5px;
+        color: var(--ink-2);
+        text-align: center;
+        -moz-appearance: textfield;
+      }
+      .page-input::-webkit-outer-spin-button,
+      .page-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .page-input:focus {
+        outline: none;
+        border-color: var(--brand-line);
+      }
+
+      .pane-empty {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: var(--ink-faint);
+        padding: 24px;
+        text-align: center;
+      }
+      .pane-empty .big {
+        font-size: 15px;
+        color: var(--ink-soft);
+      }
+      .pane-empty .small {
+        font-size: 13px;
+      }
+
+      .loading-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 14px;
+        font-size: 13px;
+        color: var(--ink-soft);
+      }
+      .spinner {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid var(--brand-line);
+        border-top-color: var(--brand);
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* =====================================================================
+       * Chat
+       * =================================================================== */
+      .chat-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 26px 34px 10px;
+      }
+      .thread {
+        max-width: 880px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+      }
+
+      .bubble-user {
+        align-self: flex-end;
+        max-width: 560px;
+        background: var(--chip);
+        border-radius: 16px;
+        padding: 13px 18px;
+        font-size: 16px;
+        line-height: 1.5;
+        color: var(--ink);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .answer-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        color: var(--ink-soft);
+        font-size: 12.5px;
+        font-weight: 500;
+      }
+      .answer-head svg {
+        color: var(--brand);
+      }
+
+      .bubble-error {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--canvas);
+        padding: 14px 18px;
+        color: var(--ink-2);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .bubble-error .icon {
+        color: var(--danger);
+        flex: 0 0 auto;
+        margin-top: 2px;
+      }
+
+      /* Activity line: Elicit's shimmering "working" row. */
+      .activity {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink-faint);
+        font-size: 15px;
+      }
+      .activity .hourglass {
+        display: inline-block;
+        animation: hourglass-swing 1.6s ease-in-out infinite;
+      }
+      @keyframes hourglass-swing {
+        0%,
+        100% {
+          transform: rotate(-14deg);
+        }
+        50% {
+          transform: rotate(14deg);
+        }
+      }
+      .text-shimmer {
+        background-image: linear-gradient(
+          90deg,
+          #b3b1ae 0%,
+          #b3b1ae 38%,
+          #ffffff 50%,
+          #b3b1ae 62%,
+          #b3b1ae 100%
+        );
+        background-size: 200% 100%;
+        background-repeat: repeat;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        animation: text-shimmer 1s linear infinite;
+      }
+      @keyframes text-shimmer {
+        from {
+          background-position: 200% 0;
+        }
+        to {
+          background-position: -200% 0;
+        }
+      }
+
+      /* -- starter suggestions -- */
+      .starter {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100%;
+        gap: 18px;
+        text-align: center;
+      }
+      .starter h2 {
+        margin: 0;
+        font-size: 21px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .starter p {
+        margin: 0;
+        font-size: 14px;
+        color: var(--ink-soft);
+      }
+      .chips {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 9px;
+        width: 100%;
+        max-width: 560px;
+      }
+      .chip {
+        text-align: left;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 12px 14px;
+        font-size: 13.5px;
+        color: var(--ink-2);
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .chip:hover {
+        background: var(--canvas);
+        border-color: var(--brand-line);
+        color: var(--ink);
+      }
+
+      /* -- composer -- */
+      .composer-wrap {
+        flex: 0 0 auto;
+        padding: 12px 34px 22px;
+      }
+      .composer {
+        max-width: 880px;
+        margin: 0 auto;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .composer:focus-within {
+        border-color: var(--brand-line);
+        box-shadow: 0 2px 14px rgba(15, 107, 107, 0.1);
+      }
+      .composer textarea {
+        display: block;
+        width: 100%;
+        border: none;
+        outline: none;
+        resize: none;
+        background: transparent;
+        padding: 14px 18px 4px;
+        font: inherit;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--ink);
+        max-height: 168px;
+        min-height: 52px;
+      }
+      .composer textarea::placeholder {
+        color: var(--ink-faint);
+      }
+      .composer-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px 10px 18px;
+      }
+      .composer-hint {
+        font-size: 12px;
+        color: var(--ink-faint);
+      }
+      .send {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border: none;
+        border-radius: 9px;
+        background: var(--brand);
+        color: #fff;
+        transition: background 0.15s;
+      }
+      .send:hover:not(:disabled) {
+        background: var(--brand-hover);
+      }
+      .send:disabled {
+        background: #7fb6b6;
+        cursor: default;
+      }
+
+      /* =====================================================================
+       * Markdown answer
+       * =================================================================== */
+      .md {
+        font-size: 16.5px;
+        line-height: 1.75;
+        color: var(--ink-2);
+        word-break: break-word;
+      }
+      .md > *:first-child {
+        margin-top: 0;
+      }
+      .md > *:last-child {
+        margin-bottom: 0;
+      }
+      .md h1,
+      .md h2,
+      .md h3,
+      .md h4 {
+        color: var(--ink);
+        font-weight: 600;
+        line-height: 1.35;
+        margin: 26px 0 10px;
+      }
+      .md h1 {
+        font-size: 21px;
+        letter-spacing: -0.01em;
+      }
+      .md h2 {
+        font-size: 18px;
+      }
+      .md h3 {
+        font-size: 16.5px;
+      }
+      .md h4 {
+        font-size: 15.5px;
+        color: var(--ink-2);
+      }
+      .md p {
+        margin: 12px 0;
+      }
+      .md ul,
+      .md ol {
+        margin: 12px 0;
+        padding-left: 24px;
+      }
+      .md li {
+        margin: 5px 0;
+      }
+      .md li::marker {
+        color: var(--ink-faint);
+      }
+      .md a {
+        color: var(--brand);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .md strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .md hr {
+        border: none;
+        border-top: 1px solid var(--line);
+        margin: 22px 0;
+      }
+      .md code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.87em;
+        background: var(--chip);
+        border-radius: 5px;
+        padding: 1.5px 5px;
+        color: var(--ink);
+      }
+      .md pre {
+        background: #1c1c1c;
+        color: #eaeaea;
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        margin: 14px 0;
+        line-height: 1.6;
+      }
+      .md pre code {
+        background: none;
+        color: inherit;
+        padding: 0;
+        font-size: 13px;
+      }
+      .md blockquote {
+        margin: 16px 0;
+        padding: 12px 16px;
+        background: var(--canvas);
+        border-left: 3px solid var(--brand-line);
+        border-radius: 0 8px 8px 0;
+        color: var(--ink-soft);
+        font-size: 14.5px;
+      }
+      .md blockquote p {
+        margin: 5px 0;
+      }
+
+      /* Tables: the shape most extraction answers arrive in. */
+      .table-wrap {
+        margin: 16px 0;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-panel);
+        overflow-x: auto;
+        background: var(--surface);
+      }
+      .md table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .md thead th {
+        background: var(--sunken);
+        color: var(--ink);
+        font-weight: 600;
+        font-size: 12.5px;
+        letter-spacing: 0.02em;
+        text-align: left;
+        white-space: nowrap;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .md tbody td {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--ink-2);
+        vertical-align: top;
+      }
+      .md tbody tr:last-child td {
+        border-bottom: none;
+      }
+      .md tbody tr:nth-child(even) {
+        background: #fcfcfb;
+      }
+      .md tbody tr:hover {
+        background: var(--brand-soft);
+      }
+      .md td code,
+      .md th code {
+        background: var(--chip);
+      }
+
+      .md .katex-display {
+        margin: 16px 0;
+        padding: 2px 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+      .md .katex {
+        font-size: 1.02em;
+      }
+
+      /* Citation pill: "[来源: Section: 5.4, Block Index: 4]" -> badge. In
+         multi mode the same pill also names its paper and opens it. */
+      .cite {
+        display: inline-block;
+        vertical-align: baseline;
+        margin: 0 1px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--chip);
+        color: var(--ink-soft);
+        font-size: 12.5px;
+        line-height: 1.6;
+        white-space: nowrap;
+        cursor: help;
+        transition: background 0.15s, color 0.15s;
+      }
+      .cite:hover {
+        background: var(--brand-soft);
+        color: var(--brand);
+      }
+      .cite[data-paper] {
+        cursor: pointer;
+        background: var(--brand-tint);
+        color: var(--brand);
+      }
+      .cite[data-paper]:hover {
+        background: var(--brand-soft);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .text-shimmer,
+        .activity .hourglass,
+        .step.active .step-dot,
+        .bar > i,
+        .spinner {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- ================= sidebar ================= -->
+      <aside class="sidebar">
+        <div class="side-head">
+          <div class="logo">
+            <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+              <path
+                d="M16.4 3.6 27 9.9c.8.5.8 1.7 0 2.2l-3.3 2-9.4-5.7a1.3 1.3 0 0 0-1.3 0L5.4 12.1c-.8-.5-.8-1.7 0-2.2L15 3.6a1.3 1.3 0 0 1 1.4 0Z"
+                fill="var(--brand)"
+              />
+              <path
+                d="M4.5 13.2 13 18.4v3.3l-8.5-5.2c-.8-.5-.8-1.7 0-2.2l.05-.03c.31-.19.66-.36.95-.09Z"
+                fill="var(--brand)"
+              />
+              <rect x="4.6" y="19.2" width="9.6" height="2.9" rx="1.45" fill="var(--brand)" />
+              <rect x="4.6" y="23.4" width="9.6" height="2.9" rx="1.45" fill="var(--brand)" />
+              <rect x="4.6" y="15" width="9.6" height="2.9" rx="1.45" fill="var(--brand)" />
+            </svg>
+            <span class="logo-name">Qgent</span>
+          </div>
+        </div>
+
+        <div class="side-upload">
+          <div class="drop" id="drop">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+              <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+            </svg>
+            <div class="drop-title">拖入 PDF 或点击选择</div>
+            <div class="drop-sub">自动解析 · 抽取 · 入库</div>
+            <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden />
+          </div>
+
+          <div id="tasks"></div>
+        </div>
+
+        <div class="lib-label">
+          <span>文献库</span>
+          <span id="lib-count">—</span>
+        </div>
+        <div class="paper-list" id="papers">
+          <div class="empty-hint">加载中…</div>
+        </div>
+
+        <div class="side-foot">
+          <span class="dot-live" id="live"></span>
+          <span id="live-text">连接中…</span>
+        </div>
+      </aside>
+
+      <!-- ================= workspace ================= -->
+      <main class="workspace">
+        <section class="pane reader" id="reader">
+          <div class="pane-head">
+            <div class="pane-title" id="reader-title">未选择论文</div>
+            <!-- Multi mode only: the papers the current answer cited. Picking
+                 one renders its PDF here. -->
+            <span id="picker-wrap" style="display: none">
+              <select class="paper-select" id="paper-select" aria-label="回答中引用的论文"></select>
+            </span>
+            <span class="pane-note" id="reader-page" style="display: none">
+              第
+              <input
+                class="page-input"
+                id="page-input"
+                type="number"
+                min="1"
+                value="1"
+                aria-label="跳转到页码"
+              />
+              / <span id="page-total">0</span> 页
+            </span>
+          </div>
+          <div class="pane-empty" id="reader-empty">
+            <div class="big">左侧选择一篇论文</div>
+            <div class="small">原文 PDF 会在这里分页渲染，支持鼠标滚动阅读</div>
+          </div>
+          <div class="pdf-scroll" id="pdf-scroll" style="display: none">
+            <div class="pdf-pages" id="pdf-pages"></div>
+          </div>
+        </section>
+
+        <div class="splitter" id="splitter" title="拖动调整宽度"></div>
+
+        <section class="pane chat">
+          <div class="pane-head">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <g stroke="var(--brand)" stroke-width="1.7">
+                <ellipse cx="12" cy="12" rx="8.1" ry="4.3" transform="rotate(45 12 12)" />
+                <ellipse cx="12" cy="12" rx="8.1" ry="4.3" transform="rotate(-45 12 12)" />
+              </g>
+              <circle cx="12" cy="12" r="1.35" fill="var(--brand)" />
+            </svg>
+            <div class="pane-title">论文问答</div>
+            <div class="mode-switch" id="mode-switch" role="group" aria-label="问答范围">
+              <button class="mode-btn active" type="button" data-mode="single">单篇精读</button>
+              <button class="mode-btn" type="button" data-mode="multi">多篇全局</button>
+            </div>
+            <span class="pane-note" id="chat-scope">只读数据库</span>
+          </div>
+
+          <div class="chat-scroll" id="chat-scroll">
+            <div class="thread" id="thread"></div>
+          </div>
+
+          <div class="composer-wrap">
+            <div class="composer">
+              <textarea
+                id="input"
+                rows="1"
+                placeholder="就这篇论文提问，例如：主实验在哪些数据集上做了对比？"
+              ></textarea>
+              <div class="composer-foot">
+                <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+                <button class="send" id="send" aria-label="发送" disabled>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.25"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      'use strict';
+
+      // A blocked CDN must degrade to a message, not to a dead page: without
+      // this guard the very next line would throw and stop the whole script.
+      const MISSING_LIBS = [
+        window.pdfjsLib ? null : 'PDF.js',
+        window.marked ? null : 'marked.js',
+      ].filter(Boolean);
+
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = window.QG_PDF_BASE + 'pdf.worker.min.js';
+      }
+      if (window.marked) {
+        marked.setOptions({ gfm: true, breaks: true });
+      }
+
+      const $ = (id) => document.getElementById(id);
+
+      const el = {
+        drop: $('drop'),
+        file: $('file'),
+        tasks: $('tasks'),
+        papers: $('papers'),
+        libCount: $('lib-count'),
+        live: $('live'),
+        liveText: $('live-text'),
+        readerTitle: $('reader-title'),
+        readerPage: $('reader-page'),
+        pageInput: $('page-input'),
+        pageTotal: $('page-total'),
+        readerEmpty: $('reader-empty'),
+        pdfScroll: $('pdf-scroll'),
+        pdfPages: $('pdf-pages'),
+        pickerWrap: $('picker-wrap'),
+        paperSelect: $('paper-select'),
+        modeSwitch: $('mode-switch'),
+        chatScope: $('chat-scope'),
+        chatScroll: $('chat-scroll'),
+        thread: $('thread'),
+        input: $('input'),
+        send: $('send'),
+        splitter: $('splitter'),
+        reader: $('reader'),
+      };
+
+      // The two modes are two conversations.  A single-paper thread is keyed
+      // by its paper id; the multi-paper one needs a key of its own, because
+      // it is not bound to any paper and must survive the reader being pointed
+      // at one.
+      const MULTI_KEY = '__multi__';
+
+      const state = {
+        mode: 'single', // 'single' | 'multi'
+        papers: [],
+        activeId: null,
+        threads: new Map(), // thread key -> [{role, text, citations?}]
+        pending: new Set(), // thread keys with a question in flight
+        // Reader state. `entries` is one record per page: a placeholder div
+        // whose canvas is created only while the page is near the viewport.
+        pdf: {
+          doc: null,
+          paperId: null,
+          token: 0,
+          entries: [],
+          scale: 1,
+          current: 1,
+          renderChain: Promise.resolve(),
+        },
+      };
+
+      /* ------------------------------------------------------------------ *
+       * helpers
+       * ------------------------------------------------------------------ */
+
+      /** A readable message for a failed response.
+       *
+       * FastAPI answers an application error with `detail` as a *string*, but
+       * a request-validation failure (422) with `detail` as a *list of
+       * objects* -- `[{loc: ['body','paper_id'], msg: '...'}]`.  Passing that
+       * to `new Error()` stringifies it to the literal "[object Object]",
+       * which is what a frontend and backend whose schemas disagree used to
+       * show: no clue which field, no clue it was a 422.  Both shapes are
+       * spelled out here, so the bubble always says what actually went wrong.
+       */
+      function describeError(body, status) {
+        const detail = body ? body.detail : null;
+        if (typeof detail === 'string' && detail) return detail;
+        if (Array.isArray(detail)) {
+          const parts = detail.map(function (item) {
+            if (item && typeof item === 'object') {
+              const where = Array.isArray(item.loc) ? item.loc.join('.') : '';
+              const what = item.msg || JSON.stringify(item);
+              return where ? where + ': ' + what : what;
+            }
+            return String(item);
+          });
+          return (
+            'HTTP ' + status + ' 请求格式不符：' + (parts.join('；') || '服务端未说明原因') +
+            '（若刚更新过后端代码，请重启服务）'
+          );
+        }
+        if (detail != null) {
+          return typeof detail === 'object' ? JSON.stringify(detail) : String(detail);
+        }
+        return 'HTTP ' + status;
+      }
+
+      async function api(path, options) {
+        const response = await fetch(path, options);
+        if (!response.ok) {
+          let body = null;
+          try {
+            body = await response.json();
+          } catch (_) {
+            /* not JSON: the status line is all there is */
+          }
+          throw new Error(describeError(body, response.status));
+        }
+        return response.json();
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      /** The text of a message, whatever shape it arrived in.
+       *
+       * `reply` is a Markdown string and nothing else, so this normally does
+       * nothing at all.  It exists because the alternative failure is silent
+       * and confusing: `String({...})` is "[object Object]", so a backend that
+       * ever answers with an object -- a nested envelope, a differently named
+       * field -- would fill the bubble with that instead of the answer.  An
+       * object is unwrapped to its text if it carries any, and otherwise
+       * pretty-printed, so the answer is visible either way.
+       */
+      function messageText(value) {
+        if (typeof value === 'string') return value;
+        if (value == null) return '';
+        if (typeof value === 'object') {
+          const fields = ['reply', 'content', 'text', 'answer', 'message'];
+          for (const field of fields) {
+            if (typeof value[field] === 'string') return value[field];
+          }
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch (_) {
+            return String(value);
+          }
+        }
+        return String(value);
+      }
+
+      function debounce(fn, ms) {
+        let timer = null;
+        return function () {
+          clearTimeout(timer);
+          timer = setTimeout(fn, ms);
+        };
+      }
+
+      /* ------------------------------------------------------------------ *
+       * markdown + citations
+       * ------------------------------------------------------------------ */
+
+      // The system prompt asks the model to source every sentence as
+      // "[来源: Section: 5.4 Regularization, Block Index: 4]" -- or, in multi
+      // mode, "[来源: 《Attention Is All You Need》, paper_id: 4, Section: 3.2]".
+      // Each one is swapped for an alphanumeric placeholder before marked
+      // runs, so the badge HTML is never escaped by the parser, then swapped
+      // back after.
+      const CITE_RE = /\[来源\s*:\s*([^\]]+)\]/g;
+      const CITE_TOKEN_RE = /QGCITE(\d+)QG/g;
+
+      // Formulas arrive in most answers about these papers. They are pulled
+      // out before markdown parsing — marked reads the `_i` in `QW_i^Q` as an
+      // emphasis marker and mangles the formula — and handed to KaTeX
+      // afterwards, which reads them back off the DOM.
+      const MATH_RE = /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$[^$\n]+?\$/g;
+      const MATH_TOKEN_RE = /QGMATH(\d+)QG/g;
+
+      function parseCitation(inner) {
+        const raw = inner.trim().replace(/\s+/g, ' ');
+        const idMatch = raw.match(/paper[_\s-]?id\s*[:=]\s*(\d+)/i);
+        const titleMatch = raw.match(/《([^》]+)》/);
+        // The paper comes before the section in multi mode, so both parts are
+        // taken out first and what is left reads the same in either mode --
+        // the model also writes "Section 5.4" with no colon at all.
+        const rest = raw
+          .replace(/《[^》]*》/g, ' ')
+          .replace(/paper[_\s-]?id\s*[:=]\s*\d+/gi, ' ')
+          .replace(/^[\s,，]+/, '')
+          .replace(/\s*,\s*$/, '')
+          .replace(/^Section\s*:?\s*/i, '')
+          .trim();
+        const match = rest.match(/^(.*?)(?:\s*,\s*Block\s*Index\s*:?\s*(.+))?$/i);
+        return {
+          section: match ? match[1].trim() || rest : rest,
+          // The model cites one block ("4") or several ("0 & 2").
+          block: match && match[2] ? match[2].trim().replace(/\s*&\s*/g, ', ') : null,
+          paperId: idMatch ? Number(idMatch[1]) : null,
+          paper: titleMatch ? titleMatch[1].trim() : null,
+        };
+      }
+
+      function citationBadge(cite) {
+        const section = cite.section || '未知章节';
+        const short = section.length > 26 ? section.slice(0, 25) + '…' : section;
+        // Multi mode names the paper on the badge itself: a page of badges for
+        // three different papers is unreadable if they all look alike.
+        const paper = cite.paper
+          ? cite.paper.length > 30
+            ? cite.paper.slice(0, 29) + '…'
+            : cite.paper
+          : cite.paperId != null
+            ? 'paper ' + cite.paperId
+            : '';
+        const label =
+          (paper ? paper + ' · ' : '') +
+          '§ ' +
+          short +
+          (cite.block ? ' · B' + cite.block : '');
+        const title =
+          (cite.paper ? '《' + cite.paper + '》' : '') +
+          (cite.paperId != null ? ' (paper_id = ' + cite.paperId + ')' : '') +
+          (cite.paper || cite.paperId != null ? '\n' : '') +
+          '来源：Section: ' +
+          section +
+          (cite.block ? ', Block Index: ' + cite.block : '') +
+          (cite.paperId != null ? '\n点击在左侧打开这篇论文' : '');
+        const clickable = cite.paperId != null ? ' data-paper="' + cite.paperId + '"' : '';
+        return (
+          '<span class="cite"' +
+          clickable +
+          ' title="' +
+          escapeHtml(title) +
+          '">' +
+          escapeHtml(label) +
+          '</span>'
+        );
+      }
+
+      function renderMarkdown(text) {
+        if (!window.marked) {
+          return '<pre>' + escapeHtml(text) + '</pre>';
+        }
+
+        const cites = [];
+        const maths = [];
+        const prepared = String(text)
+          .replace(CITE_RE, function (_, inner) {
+            cites.push(parseCitation(inner));
+            return 'QGCITE' + (cites.length - 1) + 'QG';
+          })
+          .replace(MATH_RE, function (match) {
+            maths.push(match);
+            return 'QGMATH' + (maths.length - 1) + 'QG';
+          });
+
+        let html = marked.parse(prepared);
+
+        // Tables get a scroll wrapper so a wide result table cannot blow the
+        // column out; the wrapper carries the rounded border.
+        html = html
+          .replace(/<table>/g, '<div class="table-wrap"><table>')
+          .replace(/<\/table>/g, '</table></div>');
+
+        html = html.replace(CITE_TOKEN_RE, function (_, index) {
+          const cite = cites[Number(index)];
+          return cite ? citationBadge(cite) : '';
+        });
+
+        return html.replace(MATH_TOKEN_RE, function (_, index) {
+          return escapeHtml(maths[Number(index)]);
+        });
+      }
+
+      /** Typeset the formulas KaTeX was handed, if it loaded. */
+      function typesetMath(root) {
+        if (!window.renderMathInElement) return;
+        try {
+          renderMathInElement(root, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\[', right: '\\]', display: true },
+              { left: '\\(', right: '\\)', display: false },
+            ],
+            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option'],
+            throwOnError: false,
+          });
+        } catch (_) {
+          /* a malformed formula must not take the answer down */
+        }
+      }
+
+      /* ------------------------------------------------------------------ *
+       * library
+       * ------------------------------------------------------------------ */
+      async function loadPapers() {
+        try {
+          const papers = await api('/api/papers');
+          state.papers = papers;
+          el.libCount.textContent = papers.length ? String(papers.length) : '0';
+          renderPapers();
+          setLive(true, papers.length + ' 篇论文 · 数据库已连接');
+        } catch (error) {
+          el.papers.innerHTML =
+            '<div class="empty-hint">读取文献库失败：' + escapeHtml(error.message) + '</div>';
+          setLive(false, '数据库连接失败');
+        }
+      }
+
+      function renderPapers() {
+        if (!state.papers.length) {
+          el.papers.innerHTML = '<div class="empty-hint">还没有论文，先上传一篇 PDF</div>';
+          return;
+        }
+        el.papers.innerHTML = state.papers
+          .map(function (paper) {
+            const active = paper.id === state.activeId ? ' active' : '';
+            const domain = paper.domain
+              ? '<span class="domain">' + escapeHtml(paper.domain) + '</span>'
+              : '';
+            return (
+              '<button class="paper' +
+              active +
+              '" data-id="' +
+              paper.id +
+              '" title="' +
+              escapeHtml(paper.title) +
+              '">' +
+              '<div class="paper-title">' +
+              escapeHtml(paper.title) +
+              '</div>' +
+              '<div class="paper-meta">' +
+              domain +
+              '</div></button>'
+            );
+          })
+          .join('');
+      }
+
+      function setLive(ok, text) {
+        el.live.className = ok ? 'dot-live' : 'dot-live off';
+        el.liveText.textContent = text;
+      }
+
+      el.papers.addEventListener('click', function (event) {
+        const button = event.target.closest('.paper');
+        if (button) selectPaper(Number(button.dataset.id));
+      });
+
+      function selectPaper(paperId) {
+        // In multi mode the conversation is not bound to a paper, so clicking
+        // one in the library only changes what the reader shows.
+        if (state.mode === 'multi') {
+          openPaper(paperId);
+          return;
+        }
+        if (state.activeId === paperId) return;
+        state.activeId = paperId;
+        renderPapers();
+
+        const paper = state.papers.find((item) => item.id === paperId);
+        el.readerTitle.textContent = paper ? paper.title : 'paper_id=' + paperId;
+
+        renderThread();
+        // The composer's placeholder and send button depend on which paper is
+        // open, so they have to be refreshed along with the thread.
+        syncComposer();
+        loadPdf(paperId);
+      }
+
+      /** Point the reader at a paper without touching the conversation. */
+      function openPaper(paperId) {
+        const paper = state.papers.find((item) => item.id === paperId);
+        el.readerTitle.textContent = paper ? paper.title : 'paper_id=' + paperId;
+        if (state.activeId !== paperId) {
+          state.activeId = paperId;
+          renderPapers();
+        }
+        loadPdf(paperId);
+        if (el.paperSelect.options.length) el.paperSelect.value = String(paperId);
+      }
+
+      /* ------------------------------------------------------------------ *
+       * PDF rendering
+       * ------------------------------------------------------------------ */
+      /* ------------------------------------------------------------------ *
+       * PDF rendering — lazy and windowed
+       *
+       * A paper is 50–100 pages, so rendering them all up front is the one
+       * thing that makes opening one feel broken: every page becomes a
+       * full-resolution canvas before the reader can scroll.  Instead each
+       * page gets a cheap placeholder of the right height, and only the pages
+       * around the viewport are turned into canvases — one at a time, so a
+       * burst of renders never blocks scrolling.  Canvases far behind are
+       * released again, which is what keeps a 100-page paper's memory flat
+       * instead of growing to a gigabyte of bitmaps.
+       * ------------------------------------------------------------------ */
+      const PAGE_GAP = 18; // must match .pdf-pages gap
+      const AHEAD = 2; // pages rendered below the current one
+      const BEHIND = 1; // pages kept rendered above it
+      const KEEP_AHEAD = 8; // past this a canvas is released
+      const KEEP_BEHIND = 4;
+
+      function releaseDoc() {
+        const pdf = state.pdf;
+        pdf.entries.forEach(function (entry) {
+          if (entry.task) {
+            try {
+              entry.task.cancel();
+            } catch (_) {
+              /* already finished */
+            }
+          }
+        });
+        pdf.entries = [];
+        pdf.renderChain = Promise.resolve();
+        if (pdf.doc) {
+          pdf.doc.destroy();
+          pdf.doc = null;
+        }
+      }
+
+      /** Cumulative page offsets, for scroll position <-> page number. */
+      function layoutPages() {
+        let top = 0;
+        state.pdf.entries.forEach(function (entry) {
+          entry.top = top;
+          top += entry.height + PAGE_GAP;
+        });
+      }
+
+      function pageAtScroll(y) {
+        const entries = state.pdf.entries;
+        let current = 1;
+        for (const entry of entries) {
+          if (entry.top <= y + 2) current = entry.number;
+          else break;
+        }
+        return current;
+      }
+
+      function setPageInput(number) {
+        // Never overwrite what the reader is typing.
+        if (document.activeElement !== el.pageInput) el.pageInput.value = String(number);
+      }
+
+      function scrollToPage(number) {
+        const entry = state.pdf.entries[number - 1];
+        if (!entry) return;
+        el.pdfScroll.scrollTop = entry.top;
+        updateWindow();
+      }
+
+      /** Render what is near the viewport, release what is far behind. */
+      function updateWindow() {
+        const pdf = state.pdf;
+        if (!pdf.entries.length) return;
+
+        pdf.current = pageAtScroll(el.pdfScroll.scrollTop);
+        setPageInput(pdf.current);
+
+        pdf.entries.forEach(function (entry) {
+          const distance = entry.number - pdf.current;
+          if (distance >= -BEHIND && distance <= AHEAD) queueRender(entry);
+          else if (distance < -KEEP_BEHIND || distance > KEEP_AHEAD) releaseCanvas(entry);
+        });
+      }
+
+      // One render at a time: PDF.js paints on the main thread, and firing a
+      // dozen renders at once is what makes scrolling stutter.
+      function queueRender(entry) {
+        if (entry.rendered || entry.busy) return;
+        entry.busy = true;
+        state.pdf.renderChain = state.pdf.renderChain
+          .then(() => renderPage(entry))
+          .catch(() => {});
+      }
+
+      async function renderPage(entry) {
+        const pdf = state.pdf;
+        const token = pdf.token;
+        try {
+          if (!pdf.doc || entry.rendered) return;
+          // Scrolled past while queued: leave the placeholder, it is cheaper
+          // to re-render on the way back than to finish a page nobody sees.
+          if (Math.abs(entry.number - pdf.current) > KEEP_AHEAD) return;
+
+          const page = await pdf.doc.getPage(entry.number);
+          if (token !== pdf.token) return;
+
+          const viewport = page.getViewport({ scale: pdf.scale });
+          const dpr = window.devicePixelRatio || 1;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width * dpr);
+          canvas.height = Math.floor(viewport.height * dpr);
+          canvas.style.width = viewport.width + 'px';
+          canvas.style.height = viewport.height + 'px';
+          entry.holder.insertBefore(canvas, entry.holder.firstChild);
+          entry.canvas = canvas;
+
+          // A page whose real height differs from page 1's estimate (mixed
+          // page sizes) re-anchors the offsets so scroll stays truthful.
+          if (Math.round(viewport.height) !== entry.height) {
+            entry.height = Math.round(viewport.height);
+            entry.holder.style.height = entry.height + 'px';
+            layoutPages();
+          }
+
+          entry.task = page.render({
+            canvasContext: canvas.getContext('2d'),
+            viewport: viewport,
+            // Identity at dpr=1; upscales the backing store on retina.
+            transform: [dpr, 0, 0, dpr, 0, 0],
+          });
+          await entry.task.promise;
+          if (token !== pdf.token) return;
+
+          entry.rendered = true;
+          entry.holder.classList.add('ready');
+        } catch (error) {
+          // A cancelled or superseded render is the normal path here; the
+          // placeholder simply stays until the page is needed again.
+        } finally {
+          entry.busy = false;
+          entry.task = null;
+        }
+      }
+
+      function releaseCanvas(entry) {
+        if (!entry.rendered || !entry.canvas) return;
+        entry.canvas.width = 0;
+        entry.canvas.height = 0;
+        entry.canvas.remove();
+        entry.canvas = null;
+        entry.rendered = false;
+        entry.holder.classList.remove('ready');
+      }
+
+      async function loadPdf(paperId, restorePage) {
+        const token = ++state.pdf.token;
+        releaseDoc();
+        state.pdf.current = restorePage || 1;
+
+        el.readerEmpty.style.display = 'none';
+        el.pdfScroll.style.display = 'block';
+        el.pdfPages.innerHTML =
+          '<div class="loading-row"><span class="spinner"></span>' +
+          '<span id="pdf-progress">正在加载 PDF…</span></div>';
+        el.readerPage.style.display = 'none';
+
+        try {
+          if (!window.pdfjsLib) throw new Error('PDF.js 未加载，请检查网络后刷新页面');
+
+          // Transport left at its defaults (streaming, pre-fetch on) on
+          // purpose.  Measured on the 2.2 MB paper, first page only:
+          //
+          //   streaming   first visit 2.2 MB, second visit 0 bytes (cached)
+          //   range-only  first visit 645 KB, second visit 645 KB again
+          //
+          // Range requests are answered with 206, and Chrome does not put
+          // partial responses in the HTTP cache, so `disableStream` would buy a
+          // smaller first load and then pay it again on every revisit — which
+          // is exactly what the Cache-Control on /api/pdf is there to avoid.
+          // Streaming also renders page 1 from the first chunk, so first paint
+          // is no slower; what makes opening a paper fast is the lazy window
+          // below, not the transport.
+          const task = pdfjsLib.getDocument({
+            url: '/api/pdf/' + paperId,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl:
+              'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/',
+          });
+          task.onProgress = function (progress) {
+            const node = document.getElementById('pdf-progress');
+            if (node && progress.total) {
+              const percent = Math.round((progress.loaded / progress.total) * 100);
+              node.textContent = '正在加载 PDF… ' + percent + '%';
+            }
+          };
+
+          const doc = await task.promise;
+          if (token !== state.pdf.token) {
+            doc.destroy();
+            return;
+          }
+          state.pdf.doc = doc;
+          state.pdf.paperId = paperId;
+
+          // Page 1 sets the scale; every placeholder is sized from it, which
+          // is exact for a uniform document and corrected per page otherwise.
+          const first = await doc.getPage(1);
+          if (token !== state.pdf.token) return;
+          const base = first.getViewport({ scale: 1 });
+          const available = Math.max(320, el.pdfScroll.clientWidth - 40);
+          const scale = Math.min(2, Math.max(0.4, available / base.width));
+          const height = Math.round(base.height * scale);
+          state.pdf.scale = scale;
+
+          el.pdfPages.innerHTML = '';
+          const entries = [];
+          for (let number = 1; number <= doc.numPages; number++) {
+            const holder = document.createElement('div');
+            holder.className = 'pdf-page';
+            holder.dataset.page = String(number);
+            holder.style.height = height + 'px';
+            const label = document.createElement('span');
+            label.className = 'pdf-num';
+            label.textContent = number + ' / ' + doc.numPages;
+            holder.appendChild(label);
+            el.pdfPages.appendChild(holder);
+            entries.push({
+              number: number,
+              holder: holder,
+              canvas: null,
+              task: null,
+              rendered: false,
+              busy: false,
+              height: height,
+              top: 0,
+            });
+          }
+          state.pdf.entries = entries;
+          layoutPages();
+
+          el.pageTotal.textContent = String(doc.numPages);
+          el.pageInput.max = String(doc.numPages);
+          el.readerPage.style.display = '';
+          setPageInput(state.pdf.current);
+          if (state.pdf.current > 1) el.pdfScroll.scrollTop = entries[state.pdf.current - 1].top;
+
+          // Renders page 1 first, then the couple of pages below it.
+          updateWindow();
+        } catch (error) {
+          if (token !== state.pdf.token) return;
+          el.pdfPages.innerHTML =
+            '<div class="pane-empty"><div class="big">PDF 加载失败</div><div class="small">' +
+            escapeHtml(error.message) +
+            '</div></div>';
+        }
+      }
+
+      // Scrolling drives the window; rAF-throttled so a fast wheel does not
+      // queue up a hundred window computations.
+      let scrollFrame = 0;
+      el.pdfScroll.addEventListener(
+        'scroll',
+        function () {
+          if (scrollFrame) return;
+          scrollFrame = requestAnimationFrame(function () {
+            scrollFrame = 0;
+            updateWindow();
+          });
+        },
+        { passive: true }
+      );
+
+      el.pageInput.addEventListener('change', function () {
+        const total = state.pdf.entries.length || 1;
+        const number = Math.min(Math.max(1, parseInt(el.pageInput.value, 10) || 1), total);
+        el.pageInput.value = String(number);
+        scrollToPage(number);
+      });
+
+      window.addEventListener(
+        'resize',
+        debounce(function () {
+          // Re-rendering at the new width loses the canvases, so the page the
+          // reader was on is restored rather than dropped back to page 1.
+          if (state.pdf.paperId) loadPdf(state.pdf.paperId, state.pdf.current);
+        }, 350)
+      );
+
+      /* ------------------------------------------------------------------ *
+       * chat
+       * ------------------------------------------------------------------ */
+      const SUGGESTIONS = {
+        single: [
+          '这篇论文的核心贡献是什么？',
+          '主实验在哪些数据集上做了对比，结果如何？',
+          '作者声明了哪些局限性（limitation）？',
+          '方法部分的关键设计是什么？',
+        ],
+        multi: [
+          '库里这些论文的核心贡献分别是什么？',
+          '把各篇论文的主实验结果放在一张表里对比',
+          '这些论文的方法有什么共同点和不同点？',
+          '哪些论文提到了相同的局限性？',
+        ],
+      };
+
+      /** The thread the composer and the reader are currently looking at. */
+      function threadKey() {
+        return state.mode === 'multi' ? MULTI_KEY : state.activeId;
+      }
+
+      function threadFor(key) {
+        if (!state.threads.has(key)) state.threads.set(key, []);
+        return state.threads.get(key);
+      }
+
+      function renderThread() {
+        const key = threadKey();
+        const multi = state.mode === 'multi';
+
+        if (key == null) {
+          el.thread.innerHTML =
+            '<div class="starter"><h2>选择一篇论文开始</h2>' +
+            '<p>问题会通过 Text-to-SQL + 向量检索回答，每句话都带溯源引用。</p></div>';
+          el.chatScope.textContent = '未选择论文';
+          return;
+        }
+        el.chatScope.textContent = multi ? '多篇全局 · 跨库' : 'paper_id = ' + key;
+
+        const messages = threadFor(key);
+        const pending = state.pending.has(key);
+        const parts = [];
+
+        if (!messages.length && !pending) {
+          const chips = (SUGGESTIONS[multi ? 'multi' : 'single'] || [])
+            .map(
+              (text) =>
+                '<button class="chip" data-ask="' + escapeHtml(text) + '">' + escapeHtml(text) + '</button>'
+            )
+            .join('');
+          parts.push(
+            '<div class="starter">' +
+              (multi
+                ? '<h2>跨库提问</h2>' +
+                  '<p>同时检索库里所有论文，每条结论都标明出自哪一篇，点击引用即可打开原文。</p>'
+                : '<h2>就这篇论文提问</h2>' +
+                  '<p>回答只来自数据库中的解析结果，不补充模型自身记忆。</p>') +
+              '<div class="chips">' +
+              chips +
+              '</div></div>'
+          );
+        }
+
+        messages.forEach(function (message) {
+          // Every bubble goes through messageText: whatever the server sent,
+          // the bubble shows text rather than "[object Object]".
+          const text = messageText(message.text);
+          if (message.role === 'user') {
+            parts.push('<div class="bubble-user">' + escapeHtml(text) + '</div>');
+          } else if (message.role === 'error') {
+            parts.push(
+              '<div class="bubble-error"><span class="icon">' +
+                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' +
+                '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>' +
+                '<path d="M12 9v4m0 4h.01"/></svg></span>' +
+                '<div>' +
+                escapeHtml(text) +
+                '</div></div>'
+            );
+          } else {
+            parts.push(
+              '<div><div class="answer-head">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+                '<g stroke="currentColor" stroke-width="1.7">' +
+                '<ellipse cx="12" cy="12" rx="8.1" ry="4.3" transform="rotate(45 12 12)"/>' +
+                '<ellipse cx="12" cy="12" rx="8.1" ry="4.3" transform="rotate(-45 12 12)"/></g>' +
+                '<circle cx="12" cy="12" r="1.35" fill="currentColor"/></svg>Qgent</div>' +
+                '<div class="md">' +
+                renderMarkdown(text) +
+                '</div></div>'
+            );
+          }
+        });
+
+        if (pending) {
+          parts.push(
+            '<div class="activity"><span class="hourglass">⏳</span>' +
+              '<span class="text-shimmer">正在检索实验表、声明与正文…</span></div>'
+          );
+        }
+
+        el.thread.innerHTML = parts.join('');
+        typesetMath(el.thread);
+        scrollToBottom();
+      }
+
+      /* ------------------------------------------------------------------ *
+       * the papers a multi-mode answer cited
+       * ------------------------------------------------------------------ */
+
+      /** What the newest answer in the multi-paper thread cited, in order.
+       *
+       *  Read off the message rather than scraped out of the rendered answer:
+       *  the server resolves these against the papers table, so the ids are
+       *  real and the titles are the library's own spelling. */
+      function citedPapers() {
+        if (state.mode !== 'multi') return [];
+        const messages = threadFor(MULTI_KEY);
+        for (let index = messages.length - 1; index >= 0; index--) {
+          if (messages[index].role === 'assistant') return messages[index].citations || [];
+        }
+        return [];
+      }
+
+      function syncPicker() {
+        const papers = citedPapers();
+        if (!papers.length) {
+          el.pickerWrap.style.display = 'none';
+          el.paperSelect.innerHTML = '';
+          return;
+        }
+
+        el.paperSelect.innerHTML = papers
+          .map(
+            (paper) =>
+              '<option value="' +
+              paper.paper_id +
+              '">《' +
+              escapeHtml(paper.title) +
+              '》</option>'
+          )
+          .join('');
+        el.pickerWrap.style.display = '';
+
+        // A paper the reader already has open wins, so a new answer does not
+        // yank the PDF out from under someone mid-sentence. Only a reader
+        // showing nothing -- or a paper this answer never cited -- follows the
+        // answer to its first citation.
+        const open = state.pdf.paperId;
+        const showing = papers.some((paper) => paper.paper_id === open);
+        const next = showing ? open : papers[0].paper_id;
+        el.paperSelect.value = String(next);
+        if (!showing) openPaper(next);
+      }
+
+      el.paperSelect.addEventListener('change', function () {
+        openPaper(Number(el.paperSelect.value));
+      });
+
+      function scrollToBottom() {
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+      }
+
+      async function ask(text) {
+        const key = threadKey();
+        if (key == null || !text.trim() || state.pending.has(key)) return;
+
+        const messages = threadFor(key);
+        messages.push({ role: 'user', text: text.trim() });
+        state.pending.add(key);
+        syncComposer();
+        renderThread();
+
+        try {
+          const result = await api('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // A null paper_id is what asks the server for the multi-paper
+            // mode; the reply then names the papers it cited.
+            body: JSON.stringify({
+              paper_id: state.mode === 'multi' ? null : key,
+              message: text.trim(),
+            }),
+          });
+          messages.push({
+            role: 'assistant',
+            text: result.reply,
+            citations: result.citations || [],
+          });
+        } catch (error) {
+          messages.push({ role: 'error', text: error.message });
+        } finally {
+          state.pending.delete(key);
+          syncComposer();
+          // Re-rendered only if the reader is still on this thread: the answer
+          // is stored under its own key either way, so switching back finds it.
+          if (threadKey() === key) {
+            renderThread();
+            syncPicker();
+          }
+        }
+      }
+
+      function syncComposer() {
+        const key = threadKey();
+        const busy = key == null || state.pending.has(key);
+        el.send.disabled = busy || !el.input.value.trim();
+        el.input.placeholder =
+          key == null
+            ? '先在左侧选择一篇论文'
+            : state.pending.has(key)
+              ? '正在回答，请稍候…'
+              : state.mode === 'multi'
+                ? '跨库提问，例如：这几篇论文在 BLEU 上谁更高？'
+                : '就这篇论文提问，例如：主实验在哪些数据集上做了对比？';
+      }
+
+      /* ------------------------------------------------------------------ *
+       * mode: one paper <-> the whole library
+       * ------------------------------------------------------------------ */
+      function setMode(mode) {
+        if (state.mode === mode) return;
+        state.mode = mode;
+
+        el.modeSwitch.querySelectorAll('.mode-btn').forEach(function (button) {
+          button.classList.toggle('active', button.dataset.mode === mode);
+        });
+
+        // Each mode keeps its own thread, so switching shows the other
+        // conversation rather than appending to it. A multi-paper thread that
+        // has never been used is empty, which is the "cleared" state.
+        renderThread();
+        syncPicker();
+        syncComposer();
+
+        // Only the untouched reader needs re-explaining; one showing a PDF
+        // stays as it is.
+        if (state.pdf.paperId == null) {
+          el.readerEmpty.innerHTML =
+            mode === 'multi'
+              ? '<div class="big">多篇全局模式</div>' +
+                '<div class="small">提问后，回答里引用的论文会出现在上方下拉框，' +
+                '选中即可在这里阅读原文</div>'
+              : '<div class="big">左侧选择一篇论文</div>' +
+                '<div class="small">原文 PDF 会在这里分页渲染，支持鼠标滚动阅读</div>';
+        }
+      }
+
+      el.modeSwitch.addEventListener('click', function (event) {
+        const button = event.target.closest('.mode-btn');
+        if (button) setMode(button.dataset.mode);
+      });
+
+      el.thread.addEventListener('click', function (event) {
+        const chip = event.target.closest('.chip');
+        if (chip) {
+          ask(chip.dataset.ask);
+          return;
+        }
+        // A citation that names its paper is a link to that paper's PDF.
+        const cite = event.target.closest('.cite[data-paper]');
+        if (cite) openPaper(Number(cite.dataset.paper));
+      });
+
+      el.input.addEventListener('input', function () {
+        el.input.style.height = 'auto';
+        el.input.style.height = Math.min(168, el.input.scrollHeight) + 'px';
+        syncComposer();
+      });
+
+      el.input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          submit();
+        }
+      });
+
+      el.send.addEventListener('click', submit);
+
+      function submit() {
+        const text = el.input.value;
+        if (!text.trim() || el.send.disabled) return;
+        el.input.value = '';
+        el.input.style.height = 'auto';
+        syncComposer();
+        ask(text);
+      }
+
+      /* ------------------------------------------------------------------ *
+       * upload + polling
+       * ------------------------------------------------------------------ */
+      el.drop.addEventListener('click', () => el.file.click());
+      // The input lives inside the dropzone, so its own click would bubble
+      // back up and reopen the picker.
+      el.file.addEventListener('click', (event) => event.stopPropagation());
+
+      el.drop.addEventListener('dragover', function (event) {
+        event.preventDefault();
+        el.drop.classList.add('over');
+      });
+      el.drop.addEventListener('dragleave', () => el.drop.classList.remove('over'));
+      el.drop.addEventListener('drop', function (event) {
+        event.preventDefault();
+        el.drop.classList.remove('over');
+        upload([...event.dataTransfer.files]);
+      });
+
+      el.file.addEventListener('change', function () {
+        upload([...el.file.files]);
+        el.file.value = '';
+      });
+
+      // One PDF at a time: the two pipeline stages share ./pdfs, ./parsed and
+      // the papers table, and MinerU is the slow part either way.
+      async function upload(files) {
+        const pdfs = files.filter((file) => file.name.toLowerCase().endsWith('.pdf'));
+        if (!pdfs.length) return;
+        for (const file of pdfs) {
+          try {
+            const body = new FormData();
+            body.append('file', file);
+            const started = await api('/api/upload', { method: 'POST', body: body });
+            trackTask(started.task_id, started.filename);
+          } catch (error) {
+            showFailedCard(file.name, error.message);
+          }
+        }
+      }
+
+      const STAGES = {
+        queued: ['排队中…', 'pending'],
+        parsing: ['MinerU 解析 PDF…', 'active'],
+        extracting: ['抽取实验 / 声明 / 正文并入库…', 'active'],
+        done: ['解析与入库完成', 'done'],
+        failed: ['处理失败', 'failed'],
+      };
+
+      function trackTask(taskId, filename) {
+        const card = document.createElement('div');
+        card.className = 'task';
+        card.innerHTML =
+          '<div class="task-top">' +
+          '<span class="task-name">' +
+          escapeHtml(filename) +
+          '</span>' +
+          '<button class="task-x" title="移除">✕</button></div>' +
+          '<div class="steps">' +
+          '<span class="step" data-step="parse"><span class="step-dot"></span>解析</span>' +
+          '<span class="step" data-step="extract"><span class="step-dot"></span>入库</span>' +
+          '</div>' +
+          '<div class="bar"><i></i></div>' +
+          '<div class="task-msg">已保存，等待后台处理…</div>';
+        card.querySelector('.task-x').addEventListener('click', () => card.remove());
+        el.tasks.prepend(card);
+
+        const timer = setInterval(async function () {
+          let task;
+          try {
+            task = await api('/api/status/' + taskId);
+          } catch (error) {
+            clearInterval(timer);
+            paint(card, 'failed', '查询任务状态失败：' + error.message);
+            return;
+          }
+          paint(card, task.stage, task.error || task.message);
+          if (task.status === 'done') {
+            clearInterval(timer);
+            await loadPapers();
+            if (task.paper_id) selectPaper(task.paper_id);
+            setTimeout(() => card.remove(), 4000);
+          } else if (task.status === 'failed') {
+            clearInterval(timer);
+          }
+        }, 1500);
+      }
+
+      function paint(card, stage, message) {
+        const [label, kind] = STAGES[stage] || [stage, 'pending'];
+        const bar = card.querySelector('.bar');
+        bar.className = 'bar' + (kind === 'done' ? ' done' : kind === 'failed' ? ' failed' : '');
+
+        const msg = card.querySelector('.task-msg');
+        msg.textContent = label + (message ? ' · ' + message : '');
+        msg.className = 'task-msg' + (kind === 'failed' ? ' failed' : '');
+
+        const parse = card.querySelector('[data-step="parse"]');
+        const extract = card.querySelector('[data-step="extract"]');
+        parse.className = 'step';
+        extract.className = 'step';
+
+        if (kind === 'failed') {
+          if (stage === 'parsing' || stage === 'queued') parse.classList.add('failed');
+          else {
+            parse.classList.add('done');
+            extract.classList.add('failed');
+          }
+        } else if (stage === 'parsing') {
+          parse.classList.add('active');
+        } else if (stage === 'extracting') {
+          parse.classList.add('done');
+          extract.classList.add('active');
+        } else if (stage === 'done') {
+          parse.classList.add('done');
+          extract.classList.add('done');
+        }
+      }
+
+      function showFailedCard(filename, message) {
+        const card = document.createElement('div');
+        card.className = 'task';
+        card.innerHTML =
+          '<div class="task-top"><span class="task-name">' +
+          escapeHtml(filename) +
+          '</span><button class="task-x" title="移除">✕</button></div>' +
+          '<div class="bar failed"><i></i></div>' +
+          '<div class="task-msg failed">上传失败 · ' +
+          escapeHtml(message) +
+          '</div>';
+        card.querySelector('.task-x').addEventListener('click', () => card.remove());
+        el.tasks.prepend(card);
+      }
+
+      /* ------------------------------------------------------------------ *
+       * splitter
+       * ------------------------------------------------------------------ */
+      (function enableSplitter() {
+        let dragging = false;
+
+        el.splitter.addEventListener('mousedown', function (event) {
+          event.preventDefault();
+          dragging = true;
+          el.splitter.classList.add('dragging');
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+        });
+
+        window.addEventListener('mousemove', function (event) {
+          if (!dragging) return;
+          const workspace = el.reader.parentElement.getBoundingClientRect();
+          const width = Math.min(
+            Math.max(340, event.clientX - workspace.left),
+            workspace.width - 380
+          );
+          el.reader.style.flex = '0 0 ' + width + 'px';
+        });
+
+        window.addEventListener('mouseup', function () {
+          if (!dragging) return;
+          dragging = false;
+          el.splitter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          if (state.pdf.paperId) loadPdf(state.pdf.paperId, state.pdf.current);
+        });
+      })();
+
+      /* ------------------------------------------------------------------ */
+      syncComposer();
+      renderThread();
+      syncPicker();
+      loadPapers();
+
+      if (MISSING_LIBS.length) {
+        el.readerEmpty.innerHTML =
+          '<div class="big">前端依赖加载失败</div>' +
+          '<div class="small">' +
+          escapeHtml(MISSING_LIBS.join(' / ')) +
+          ' 无法从 CDN 加载：PDF 阅读与 Markdown 渲染不可用。' +
+          '<br />请检查网络（可尝试代理），然后刷新页面。</div>';
+      }
+    </script>
+  </body>
+</html>

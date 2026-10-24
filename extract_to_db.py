@@ -33,8 +33,9 @@ Experiment extraction follows three rules:
    special field; only a parameter count that is configuration stays inside
    `hyperparams`.
 
-The model is called through an OpenAI-compatible chat endpoint.  DashScope/Qwen
-is the default; any compatible endpoint can be selected with --base-url.
+The model is called through an OpenAI-compatible chat endpoint.  The default
+is glm-5.2 on Compshare; any compatible endpoint can be selected with
+--base-url.
 Image blocks are never sent to the model: their content is a base64 data URI.
 """
 
@@ -86,8 +87,8 @@ _load_dotenv()
 # Configuration
 # --------------------------------------------------------------------------- #
 
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_MODEL = "qwen-plus"
+DEFAULT_BASE_URL = "https://cp.compshare.cn/v1"
+DEFAULT_MODEL = "glm-5.2"
 DEFAULT_TIMEOUT = 120.0
 DEFAULT_MAX_RETRIES = 4
 DEFAULT_MAX_CHARS = 14_000
@@ -1835,14 +1836,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--api-key",
         default=None,
-        help="API key; defaults to $DASHSCOPE_API_KEY, then $OPENAI_API_KEY",
+        help="API key; defaults to $LLM_API_KEY, then $DASHSCOPE_API_KEY, "
+             "then $OPENAI_API_KEY",
     )
     thinking = parser.add_mutually_exclusive_group()
     thinking.add_argument(
         "--no-thinking",
         dest="enable_thinking",
         action="store_false",
-        help="disable hybrid-model reasoning (Qwen3); faster and avoids long-table timeouts",
+        help="disable hybrid-model reasoning; faster and avoids long-table timeouts",
     )
     thinking.add_argument(
         "--thinking",
@@ -1930,15 +1932,16 @@ def main(argv: list[str] | None = None) -> int:
 
     api_key = (
         args.api_key
+        or os.getenv("LLM_API_KEY")
         or os.getenv("DASHSCOPE_API_KEY")
         or os.getenv("OPENAI_API_KEY")
     )
     if not api_key:
         LOG.error(
-            "No API key. Set DASHSCOPE_API_KEY (or pass --api-key).\n"
-            "  PowerShell:  $env:DASHSCOPE_API_KEY=\"sk-...\"\n"
-            "  CMD:         set DASHSCOPE_API_KEY=sk-...\n"
-            "  Bash:        export DASHSCOPE_API_KEY=sk-..."
+            "No API key. Set LLM_API_KEY (or pass --api-key).\n"
+            "  PowerShell:  $env:LLM_API_KEY=\"...\"\n"
+            "  CMD:         set LLM_API_KEY=...\n"
+            "  Bash:        export LLM_API_KEY=..."
         )
         return 2
 

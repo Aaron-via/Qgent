@@ -35,9 +35,22 @@ CREATE INDEX idx_exp_model ON experiments(model_name);
 CREATE TABLE claims (
     claim_id SERIAL PRIMARY KEY,
     paper_id INT REFERENCES papers(id) ON DELETE CASCADE,
-    claim_type TEXT CHECK (claim_type IN ('contribution', 'limitation', 'assumption', 'position')),
+    claim_type TEXT CHECK (claim_type IN ('contribution', 'limitation', 'assumption', 'position', 'plan')),
     content TEXT NOT NULL,
     embedding VECTOR(1024),
     domain_specific JSONB,
     evidence_path JSONB
 );
+
+CREATE TABLE text_chunks (
+    chunk_id SERIAL PRIMARY KEY,
+    paper_id INT REFERENCES papers(id) ON DELETE CASCADE,
+    sec_title TEXT,
+    content TEXT NOT NULL,
+    embedding VECTOR(1024),
+    evidence_path TEXT,
+    chunk_types TEXT[]
+);
+
+CREATE INDEX idx_chunks_vec ON text_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_chunks_types ON text_chunks USING GIN (chunk_types);
