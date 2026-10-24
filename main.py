@@ -7,7 +7,9 @@ Three things live here and nothing else does:
     streams the original PDF that paper was parsed from;
   * the ingest — `/api/upload` writes the PDF into ./pdfs and hands the rest
     to a background task that shells out to the two pipeline stages in order,
-    `parse_pdf.py` then `extract_pipeline.py --scan --write-db`;
+    `parse_pdf.py` then `extract_pipeline.py <parsed tree> --write-db`.  The
+    stages run one ingest at a time, queued behind whatever is already
+    running;
   * the chat — `/api/chat` runs one question through chat_agent's ReAct loop,
     either against one paper or against the whole library.
 
@@ -71,9 +73,12 @@ TREE_NAME = "content_tree.json"
 DSN = os.getenv("DATABASE_URL", ca.DEFAULT_DSN)
 
 # MinerU on a long paper is minutes, not seconds; the extraction model calls
-# out once per section.  Both get the same generous ceiling as the CLIs use.
+# out once per section.  PARSE_TIMEOUT covers one parse_pdf run, which skips
+# the PDFs that already have a content tree.  EXTRACT_TIMEOUT covers one
+# *paper*, because the ingest imports a single tree rather than scanning the
+# directory: the largest paper here (665 blocks) took about 40 minutes.
 PARSE_TIMEOUT = 3600
-EXTRACT_TIMEOUT = 3600
+EXTRACT_TIMEOUT = 5400
 
 # Log lines kept per task, for the progress panel in the sidebar.
 LOG_TAIL = 40
@@ -93,6 +98,13 @@ app = FastAPI(title="Qgent", docs_url="/docs")
 # task_id -> {status, stage, filename, message, log, error, paper_id}
 TASKS: dict[str, dict[str, Any]] = {}
 TASKS_LOCK = threading.Lock()
+
+# One ingest at a time.  parse_pdf.py walks the whole ./pdfs directory and
+# extract_pipeline.py holds a transaction per paper, so two uploads started
+# together would re-extract the same paper, race each other's inserts and
+# multiply the model spend.  A second upload therefore waits here while its
+# card shows the same `queued` stage the front end already paints.
+INGEST_LOCK = threading.Lock()
 
 
 def task_update(task_id: str, **fields: Any) -> None:
@@ -166,10 +178,28 @@ def tree_title(stem: str) -> str | None:
 
 
 def paper_id_for_title(title: str) -> int | None:
+    """The paper row this content-tree title produced, if any.
+
+    Both keys are checked, for the same reason `load_known_titles` in
+    extract_pipeline.py does: `papers.title` holds the title the model read
+    out of the paper, which it may have re-cased or normalised, while
+    `papers.content_tree ->> 'title'` holds the tree's own title -- the one
+    `tree_title` just returned.  Matching only the former reports an import
+    as failed for every paper the model renamed on the way in (for example
+    "CONTRASTIVE LEARNING WITH HARD NEGATIVE SAMPLES", stored as
+    "Contrastive Learning with Hard Negative Samples").
+    """
     conn = ca.connect_readonly(DSN)
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM papers WHERE title = %s ORDER BY id LIMIT 1", (title,))
+            cur.execute(
+                """
+                SELECT id FROM papers
+                WHERE title = %s OR content_tree ->> 'title' = %s
+                ORDER BY id LIMIT 1
+                """,
+                (title, title),
+            )
             row = cur.fetchone()
     finally:
         conn.close()
@@ -177,7 +207,24 @@ def paper_id_for_title(title: str) -> int | None:
 
 
 def run_ingest(task_id: str, stem: str) -> None:
-    """parse_pdf.py, then extract_pipeline.py, for one freshly uploaded PDF."""
+    """parse_pdf.py, then extract_pipeline.py, for one freshly uploaded PDF.
+
+    Serialised behind INGEST_LOCK: while another ingest is running this one
+    waits, and its card keeps showing the `queued` stage.  Without that lock
+    two uploads share ./pdfs and ./parsed, so each would re-extract the other's
+    paper and the two runs would race the same `papers` row.
+    """
+    if not INGEST_LOCK.acquire(blocking=False):
+        task_update(task_id, stage="queued", message="排队中：等待上一篇入库完成…")
+        INGEST_LOCK.acquire()
+    try:
+        run_ingest_locked(task_id, stem)
+    finally:
+        INGEST_LOCK.release()
+
+
+def run_ingest_locked(task_id: str, stem: str) -> None:
+    """The body of run_ingest; the caller holds INGEST_LOCK."""
     try:
         run_stage(
             task_id,
@@ -194,16 +241,40 @@ def run_ingest(task_id: str, stem: str) -> None:
         title = tree_title(stem)
         task_update(task_id, stage="extracting", title=title)
 
+        # One tree, not --scan: this upload imports this paper and nothing
+        # else, so a tree another upload left behind in ./parsed is never
+        # picked up here and cannot eat this paper's time budget.
+        #
+        # A single-tree run does not dedup on its own -- it would extract for
+        # forty minutes and only then be refused at insert by store_paper --
+        # so the check `--scan` used to do for free happens here instead.
+        existing = paper_id_for_title(title) if title else None
+        if existing is not None:
+            invalidate_pdf_index()
+            task_update(
+                task_id,
+                status="done",
+                stage="done",
+                paper_id=existing,
+                message="论文已存在，跳过入库",
+            )
+            return
+
         run_stage(
             task_id,
             "extracting",
             "extract_pipeline.py",
-            ["--scan", "--write-db", "--print-rows", "0"],
+            [
+                str(PARSED_DIR / stem / TREE_NAME),
+                "--write-db",
+                "--print-rows",
+                "0",
+            ],
             EXTRACT_TIMEOUT,
         )
 
-        # --scan skips a title the database already holds, so "no error" is not
-        # the same as "imported".  The row is what counts.
+        # "No error" is not the same as "imported": the stage prints its own
+        # result, but the row is what counts.
         paper_id = paper_id_for_title(title) if title else None
         if paper_id is None:
             raise RuntimeError(
